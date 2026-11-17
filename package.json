@@ -1,9 +1,23 @@
 {
   "name": "jira-clone",
-  "version": "1.0.0",
-  "description": "Minimal Jira-style kanban board (Express + SQLite + vanilla JS)",
+  "version": "1.1.0",
+  "description": "Jira-style kanban board with JWT auth (Express + SQLite + vanilla JS)",
   "main": "server.js",
-  "scripts": { "start": "node server.js", "dev": "node --watch server.js" },
-  "dependencies": { "better-sqlite3": "^11.5.0", "express": "^4.21.0" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "vitest run"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.5.0",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.0"
+  },
   "license": "MIT"
 }

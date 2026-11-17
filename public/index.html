@@ -12,6 +12,7 @@
   @media (prefers-color-scheme: dark) {
     :root { --bg: #141a21; --surface: #1d252e; --ink: #e6ebf0; --muted: #98a4b0; --line: #2d3945; --accent: #6ea2f0; --high: #ef8a78; --medium: #e0b45a; --low: #6cc596; }
   }
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
   header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
@@ -35,14 +36,31 @@
   .card .desc { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
   .del { border: 0; background: none; color: var(--muted); padding: 0 4px; }
   .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+  #auth { max-width: 360px; margin: 12vh auto; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  #auth h1 { margin-bottom: 4px; }
+  #auth p { color: var(--muted); margin: 0 0 16px; }
+  #auth form { flex-direction: column; }
+  .who { margin-left: auto; color: var(--muted); }
   #error { color: var(--high); padding: 0 20px; min-height: 22px; }
 </style>
 </head>
 <body>
+<section id="auth" hidden>
+  <h1>Jira Clone</h1>
+  <p>Sign in to see your projects.</p>
+  <form id="authForm">
+    <input name="email" type="email" placeholder="Email" autocomplete="email" required>
+    <input name="password" type="password" placeholder="Password (min. 8 characters)" autocomplete="current-password" minlength="8" required>
+    <button class="primary">Sign in</button>
+    <button type="button" id="register">Create account</button>
+  </form>
+</section>
+<div id="app" hidden>
 <header>
   <h1>Jira Clone</h1>
   <select id="project" aria-label="Project"></select>
   <form id="newProject"><input name="key" placeholder="Key (e.g. WEB)" size="12" required><input name="name" placeholder="Project name" required><button>Add project</button></form>
+  <span class="who" id="who"></span><button type="button" id="logout">Log out</button>
 </header>
 <header>
   <form id="newIssue">
@@ -55,14 +73,21 @@
 </header>
 <div id="error" role="alert"></div>
 <main id="board"></main>
+</div>
 
 <script>
 const COLUMNS = [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']];
 let projects = [], issues = [], current = null;
 const $ = (s) => document.querySelector(s);
 
+let token = null;
+try { token = localStorage.getItem('token'); } catch {}
+
 async function api(url, method = 'GET', body) {
-  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 401 && token && !url.startsWith('/api/auth/')) { logout(); throw new Error('Session expired. Sign in again.'); }
   if (res.status === 204) return null;
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
@@ -123,7 +148,36 @@ $('#newProject').onsubmit = e => { e.preventDefault(); const f = e.target;
 $('#newIssue').onsubmit = e => { e.preventDefault(); const f = e.target;
   run(async () => { await api('/api/issues', 'POST', { project_id: current, title: f.title.value, description: f.description.value, assignee: f.assignee.value, priority: f.priority.value }); f.reset(); await loadIssues(); }); };
 
-run(() => loadProjects());
+function showApp(on) { $('#auth').hidden = on; $('#app').hidden = !on; }
+function logout() {
+  token = null; current = null; projects = []; issues = [];
+  try { localStorage.removeItem('token'); } catch {}
+  showApp(false);
+}
+async function authenticate(mode) {
+  const f = $('#authForm');
+  if (!f.reportValidity()) return;
+  await run(async () => {
+    const data = await api(`/api/auth/${mode}`, 'POST', { email: f.email.value, password: f.password.value });
+    token = data.token;
+    try { localStorage.setItem('token', token); } catch {}
+    f.reset();
+    await start();
+  });
+}
+async function start() {
+  if (!token) return showApp(false);
+  try {
+    const me = await api('/api/auth/me');
+    $('#who').textContent = me.email;
+    showApp(true);
+    await loadProjects();
+  } catch { logout(); }
+}
+$('#authForm').onsubmit = e => { e.preventDefault(); authenticate('login'); };
+$('#register').onclick = () => authenticate('register');
+$('#logout').onclick = logout;
+start();
 </script>
 </body>
 </html>
