@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jira Clone</title>
+<style>
+  :root {
+    --bg: #eef1f4; --surface: #ffffff; --ink: #1d2733; --muted: #66727f;
+    --line: #d5dbe1; --accent: #1f5fbf; --high: #c2412d; --medium: #b7791f; --low: #2f855a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141a21; --surface: #1d252e; --ink: #e6ebf0; --muted: #98a4b0; --line: #2d3945; --accent: #6ea2f0; --high: #ef8a78; --medium: #e0b45a; --low: #6cc596; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 17px; margin: 0 8px 0 0; }
+  input, select, textarea, button { font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  form { display: flex; flex-wrap: wrap; gap: 8px; }
+  main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 20px; align-items: start; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+  .col { background: color-mix(in srgb, var(--line) 35%, transparent); border-radius: 6px; padding: 10px; min-height: 160px; }
+  .col.over { outline: 2px dashed var(--accent); }
+  .col h2 { font-size: 14px; margin: 0 0 10px; display: flex; justify-content: space-between; }
+  .col h2 span { color: var(--muted); font-weight: 400; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--medium); border-radius: 4px; padding: 10px; margin-bottom: 8px; cursor: grab; }
+  .card.high { border-left-color: var(--high); } .card.low { border-left-color: var(--low); }
+  .card.dragging { opacity: .4; }
+  .card .id { color: var(--muted); font-size: 12px; }
+  .card .meta { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .card .desc { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+  .del { border: 0; background: none; color: var(--muted); padding: 0 4px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+  #error { color: var(--high); padding: 0 20px; min-height: 22px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Jira Clone</h1>
+  <select id="project" aria-label="Project"></select>
+  <form id="newProject"><input name="key" placeholder="Key (e.g. WEB)" size="12" required><input name="name" placeholder="Project name" required><button>Add project</button></form>
+</header>
+<header>
+  <form id="newIssue">
+    <input name="title" placeholder="Issue title" size="28" required>
+    <input name="description" placeholder="Description" size="28">
+    <input name="assignee" placeholder="Assignee" size="12">
+    <select name="priority" aria-label="Priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+    <button class="primary">Create issue</button>
+  </form>
+</header>
+<div id="error" role="alert"></div>
+<main id="board"></main>
+
+<script>
+const COLUMNS = [['todo', 'To do'], ['in_progress', 'In progress'], ['done', 'Done']];
+let projects = [], issues = [], current = null;
+const $ = (s) => document.querySelector(s);
+
+async function api(url, method = 'GET', body) {
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+const run = async (fn) => { try { $('#error').textContent = ''; await fn(); } catch (e) { $('#error').textContent = e.message; } };
+
+async function loadProjects(selectId) {
+  projects = await api('/api/projects');
+  const sel = $('#project');
+  sel.replaceChildren(...projects.map(p => new Option(`${p.key} – ${p.name}`, p.id)));
+  current = selectId || current || projects[0]?.id;
+  sel.value = current;
+  await loadIssues();
+}
+async function loadIssues() {
+  issues = current ? await api(`/api/projects/${current}/issues`) : [];
+  render();
+}
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+
+function render() {
+  const key = projects.find(p => p.id == current)?.key || '';
+  const board = $('#board'); board.replaceChildren();
+  for (const [status, label] of COLUMNS) {
+    const col = el('section', 'col');
+    const items = issues.filter(i => i.status === status);
+    const h = el('h2', '', label); h.append(el('span', '', items.length));
+    col.append(h);
+    if (!items.length) col.append(el('div', 'empty', 'Drag an issue here'));
+    for (const i of items) {
+      const card = el('article', `card ${i.priority}`);
+      card.draggable = true;
+      card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', i.id); card.classList.add('dragging'); });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+      card.append(el('div', 'id', `${key}-${i.id}`), el('strong', '', i.title));
+      if (i.description) card.append(el('p', 'desc', i.description));
+      const meta = el('div', 'meta', i.assignee || 'Unassigned');
+      const del = el('button', 'del', '✕'); del.title = 'Delete issue'; del.setAttribute('aria-label', 'Delete issue');
+      del.onclick = () => run(async () => { await api(`/api/issues/${i.id}`, 'DELETE'); await loadIssues(); });
+      meta.append(del); card.append(meta); col.append(card);
+    }
+    col.addEventListener('dragover', e => { e.preventDefault(); col.classList.add('over'); });
+    col.addEventListener('dragleave', () => col.classList.remove('over'));
+    col.addEventListener('drop', e => {
+      e.preventDefault(); col.classList.remove('over');
+      const id = e.dataTransfer.getData('text/plain');
+      run(async () => { await api(`/api/issues/${id}`, 'PATCH', { status }); await loadIssues(); });
+    });
+    board.append(col);
+  }
+}
+
+$('#project').onchange = e => { current = e.target.value; run(loadIssues); };
+$('#newProject').onsubmit = e => { e.preventDefault(); const f = e.target;
+  run(async () => { const p = await api('/api/projects', 'POST', { key: f.key.value, name: f.name.value }); f.reset(); await loadProjects(p.id); }); };
+$('#newIssue').onsubmit = e => { e.preventDefault(); const f = e.target;
+  run(async () => { await api('/api/issues', 'POST', { project_id: current, title: f.title.value, description: f.description.value, assignee: f.assignee.value, priority: f.priority.value }); f.reset(); await loadIssues(); }); };
+
+run(() => loadProjects());
+</script>
+</body>
+</html>

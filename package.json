@@ -1,0 +1,9 @@
+{
+  "name": "jira-clone",
+  "version": "1.0.0",
+  "description": "Minimal Jira-style kanban board (Express + SQLite + vanilla JS)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js" },
+  "dependencies": { "better-sqlite3": "^11.5.0", "express": "^4.21.0" },
+  "license": "MIT"
+}
