@@ -15,7 +15,7 @@ A minimal Jira-style issue tracker with a drag-and-drop kanban board.
 Requires Node.js 18+.
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/khalil135711/jira-clone.git
 cd jira-clone
 npm install
 npm start
